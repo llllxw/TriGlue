@@ -1,4 +1,4 @@
-# TriGlue: training and prediction
+# TriGlue Enables Interpretable Prediction of Molecular Glue-Induced Ternary Complex Formation
 
 Train TriGlue and score candidate triplets using a compound SMILES and two protein sequences. Binding-interface annotations and ternary structures are not required. Protein graphs are built from monomer PDB structures: supply existing structures or use the preprocessing ESMFold option to generate missing ones.
 
