@@ -77,18 +77,9 @@ python calibration.py \
   --output-dir results/calibration
 ```
 
-程序仅用验证集标签拟合温度，结果保存到新的输出目录`results/calibration`：
+输出校准预测CSV、温度参数、校准前后的ECE/NLL/Brier指标及可靠性图，以及正确与错误分类样本的不确定性和置信度分布图，保存在`results/calibration`。`ensemble_sd`为各模型校准概率的样本标准差，`calibrated_confidence`为校准后的分类置信度。
 
-| 文件 | 内容 |
-|---|---|
-| `calibrated_predictions.csv` | 原始及校准后的集成概率、校准后的模型间标准差`ensemble_sd`、分类置信度`calibrated_confidence`；有标签时还包括分类是否正确 |
-| `temperatures.json` | 各模型和集成均值的温度参数 |
-| `calibration_metrics.csv` | 校准前后的ECE、NLL、Brier score |
-| `reliability_raw.svg`、`reliability_calibrated.svg` | 校准前后的可靠性图；对应分箱数据另存为同名CSV |
-| `uncertainty_comparison.svg` | 正确与错误分类样本的预测标准差分布 |
-| `confidence_comparison.svg` | 正确与错误分类样本的校准置信度分布 |
-
-验证预测必须包含真实标签；测试预测包含`label`时生成全部评估结果。对无标签的新候选，只输出校准预测和温度参数。不确定性分析至少需要两个模型。
+至少需要两个模型，温度仅用带真实标签的验证集预测拟合。测试预测含`label`时输出全部评估结果；无标签时仅输出校准预测和温度参数。请使用新的输出目录。
 
 对单个候选执行原子/残基遮挡解释：
 

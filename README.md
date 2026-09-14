@@ -92,18 +92,9 @@ python calibration.py \
   --output-dir results/calibration
 ```
 
-Temperatures are fitted using validation labels only. Outputs in `results/calibration`:
+Outputs in `results/calibration` include calibrated predictions in CSV, temperature parameters, ECE/NLL/Brier metrics and reliability diagrams before and after calibration, and uncertainty and confidence distributions for correct and incorrect classifications. `ensemble_sd` is the sample standard deviation of individually calibrated model probabilities; `calibrated_confidence` is the calibrated classification confidence.
 
-| File | Contents |
-|---|---|
-| `calibrated_predictions.csv` | Raw and calibrated ensemble probabilities, calibrated across-model SD (`ensemble_sd`), classification confidence (`calibrated_confidence`), and correctness when labels are available |
-| `temperatures.json` | Per-model and ensemble-mean temperatures |
-| `calibration_metrics.csv` | ECE, NLL and Brier score before and after calibration |
-| `reliability_raw.svg`, `reliability_calibrated.svg` | Reliability diagrams before and after calibration, with bin data in CSV files of the same names |
-| `uncertainty_comparison.svg` | Prediction SD distributions for correct and incorrect classifications |
-| `confidence_comparison.svg` | Calibrated confidence distributions for correct and incorrect classifications |
-
-Validation predictions require ground-truth labels. All evaluation outputs are generated when test predictions contain `label`. For unlabelled new candidates, only calibrated predictions and temperatures are written; correctness groups, evaluation metrics and comparison plots are omitted. Uncertainty analysis requires at least two models.
+At least two models are required. Temperatures are fitted only on labelled validation predictions. Test predictions containing `label` produce all evaluation outputs; unlabelled predictions produce only calibrated predictions and temperatures. Use a new output directory.
 
 Run atom/residue occlusion for one candidate:
 
