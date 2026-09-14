@@ -1,4 +1,4 @@
-# TriGlue：训练与预测
+# TriGlue Enables Interpretable Prediction of Molecular Glue-Induced Ternary Complex Formation
 
 输入化合物SMILES及两条蛋白质序列，训练模型并对候选三元组评分。无需提供结合界面或三元复合物结构。蛋白图由单体PDB结构构建；可以提供已有结构，或使用预处理中的ESMFold生成缺失结构。
 
