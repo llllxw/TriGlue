@@ -102,6 +102,51 @@ class GINConvNet(nn.Module):
         graph_repr = self.dp(self.act(self.fc1(global_add_pool(x, batch))))
         return graph_repr            # GIN 仅返回图级向量
 
+# ---------- 4. Graph‑Transformer ------------------------------------------
+# from graph_transformer_edge_layer import GraphTransformerLayer
+
+# class GraphTransformer(nn.Module):
+#     def __init__(self, node_dim, edge_dim,
+#                  hidden_dim=128, out_dim=128,
+#                  pos_enc_dim=8, n_layers=3, n_heads=4,
+#                  in_dp=0.1, dropout=0.1):
+#         super().__init__()
+#         self.node_lin  = nn.Linear(node_dim, hidden_dim)
+#         self.edge_lin  = nn.Linear(edge_dim, hidden_dim)
+#         self.pos_lin   = nn.Linear(pos_enc_dim, hidden_dim)
+#         self.in_dp     = nn.Dropout(in_dp)
+
+#         self.layers = nn.ModuleList([
+#             GraphTransformerLayer(hidden_dim, hidden_dim, n_heads, dropout,
+#                                   layer_norm=True, batch_norm=False, residual=True)
+#             for _ in range(n_layers-1)
+#         ])
+#         self.layers.append(GraphTransformerLayer(hidden_dim, out_dim, n_heads, dropout,
+#                                                  layer_norm=True, batch_norm=False, residual=True))
+
+#     def forward(self, g):
+#         h = g.ndata['feats'].float().to(device)
+#         e = g.edata.get('feats', torch.zeros(g.num_edges(), 1, device=device)).float().to(device)
+#         p = g.ndata.get('lap_pos_enc',
+#                         torch.zeros(g.num_nodes(), 8, device=device)).float().to(device)
+
+#         h = self.in_dp(self.node_lin(h) + self.pos_lin(p))
+#         e = self.edge_lin(e)
+
+#         for layer in self.layers:
+#             h, e = layer(g, h, e)
+#         g.ndata['h'] = h
+
+#         node_repr  = dgl_split(g, h)
+#         graph_repr = mean_nodes(g, 'h')           # 可换 gmp(h, batch)
+#         return node_repr, graph_repr
+# gragh_model.py
+import math
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import dgl
+import dgl.function as fn
 
 # -------- Multi-head attention on DGL edges --------
 class _MHAEdge(nn.Module):

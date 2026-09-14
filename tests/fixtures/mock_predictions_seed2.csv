@@ -1,0 +1,3 @@
+triplet_id,compound_id,smiles,protein1_id,protein2_id,inducibility_score
+T001,CMP001,CCO,P1_EXAMPLE,P2_EXAMPLE,0.78
+T002,CMP002,CC(=O)N,P3_EXAMPLE,P4_EXAMPLE,0.36

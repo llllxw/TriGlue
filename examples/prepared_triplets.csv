@@ -1,0 +1,2 @@
+triplet_id,compound_id,smiles,protein1_id,protein2_id
+prepared_example_001,10,O=C(O)Cc1c[nH]c2ccccc12,Q38825,Q570C0

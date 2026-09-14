@@ -1,0 +1,9 @@
+name: triglue
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.8.20
+  - pip
+  - pip:
+      - -r requirements.txt

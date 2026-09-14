@@ -1,0 +1,3 @@
+compound_id,compound_name,smiles
+CMP001,example_ethanol,CCO
+CMP002,example_acetamide,CC(=O)N
