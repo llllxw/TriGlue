@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import torch
 import dgl
+import json
+SETTINGS = json.loads(Path(__file__).with_name('config.json').read_text(encoding='utf-8'))
 from torch.utils.data import Dataset
 
 
@@ -56,9 +58,14 @@ class PreparedFeatureDataset(Dataset):
             raise ValueError(f"graph has no node feature key 'feats': {path}")
         return graph
 
-    def _protein(self, protein_id: str):
+    def _protein(self, protein_id: str, sequence: str):
+        alphabet='ACDEFGHIKLMNPQRSTVWYX'
+        if not sequence or len(sequence)>1200 or set(sequence)-set(alphabet):
+            raise ValueError('Require a protein sequence of 1-1200 residues from the 21-symbol alphabet')
+        one_hot=np.zeros((1200,21),dtype=np.float32)
+        one_hot[np.arange(len(sequence)),[alphabet.index(a) for a in sequence]]=1
         return (
-            self._load_array(str(self.root / "protein_embedding" / "one_hot" / f"{protein_id}.npy")),
+            one_hot,
             self._load_graph(str(self.root / "protein_graph" / f"{protein_id}.bin")).clone(),
             self._load_array(str(self.root / "protein_3d_embedding" / f"{protein_id}.npy")),
         )
@@ -68,8 +75,8 @@ class PreparedFeatureDataset(Dataset):
         compound_id = str(row["compound_id"])
         p1 = str(row["protein1_id"])
         p2 = str(row["protein2_id"])
-        p1_one_hot, p1_graph, p1_esm2 = self._protein(p1)
-        p2_one_hot, p2_graph, p2_esm2 = self._protein(p2)
+        p1_one_hot, p1_graph, p1_esm2 = self._protein(p1, str(row['protein1_sequence']))
+        p2_one_hot, p2_graph, p2_esm2 = self._protein(p2, str(row['protein2_sequence']))
         return {
             "smiles": str(row["smiles"]),
             "compound_graph": self._load_graph(
@@ -122,13 +129,9 @@ class LabelledFeatureDataset(PreparedFeatureDataset):
         if self.training:
             for key in ('compound_graph', 'p1_graph', 'p2_graph'):
                 graph = sample[key]
-                keep = torch.rand(graph.num_edges()) >= 0.10
+                keep = torch.rand(graph.num_edges()) >= SETTINGS['edge_drop']
                 sample[key] = dgl.edge_subgraph(graph, graph.edges(form='eid')[keep],
                                               relabel_nodes=False)
-            # These arrays are encoder embeddings, not atomic coordinates.
-            for key in ('compound_embedding', 'p1_esm2', 'p2_esm2'):
-                value = np.asarray(sample[key], dtype=np.float32)
-                sample[key] = value + np.random.normal(0, 0.02, value.shape).astype(np.float32)
         return sample
 
     @staticmethod

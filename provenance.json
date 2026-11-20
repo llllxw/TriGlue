@@ -1,0 +1,37 @@
+{
+  "upstream_commit": "7f05ed8603c05d1a8091b4e7374673dceb352bee",
+  "dataset_sha256": "b7ff6b7802f9874e0871e54e5e10ed218341accd1723328e2377cc8cd109b893",
+  "manuscript_sha256": "3becf8afb88dc8d485bceac2818c596ccfb350faf62245ff03c2f6242ecb020d",
+  "status": "Manuscript-based reference implementation; full paper numerical reproduction not established",
+  "model_math": "Single 21-channel TextCNN / DGL GIN / multimodal cross-attention reference model; new training required",
+  "missing": [
+    "raw-coordinate feature/augmentation resources",
+    "historical final-data fold identities and matched checkpoints for exact numerical replay"
+  ],
+  "recovered_from_release": [
+    "final sequence mapping",
+    "parent groups and links",
+    "prepared-feature identifiers"
+  ],
+  "split_origin": "Reconstructed from the exact final-data Release parent groups; not asserted to be historical experiment fold IDs",
+  "file_sha256": {
+    "data/dataset.csv": "b7ff6b7802f9874e0871e54e5e10ed218341accd1723328e2377cc8cd109b893",
+    "data/groups.csv": "2964aed03e18352aa882a5daf5f0827135ec515f036986c1b72a23bb39156f9d",
+    "data/parent_links.csv": "22a83c99c63bcdffe37a3fc078a222692e36cba3a65be60e56b4ddd2b6a9f77f",
+    "data/prepared_triplets.csv": "575f9b9f363bb2e5cc22cf8adb85c7cd7c1b110794c9b7ba373e22ee3627ef0c",
+    "data/sequences.csv": "0c211100fe9c10ec5023537eb11f05b6171dedd9fee3ca6cf9a6d9379297568b",
+    "splits/fold1.csv": "f3e4e09fe04a9775667ea81fc5ecad3cd9e20e21d9fc288e8a744bfedd53b590",
+    "splits/fold2.csv": "721707fe6b9cb7d4696cbab830f6f8484d95e6c66ea92a328f0596c1c3d208e6",
+    "splits/fold3.csv": "01a9d0aa688a92909d6a14c8cb3f0cee04ff9366b6d0f45ebca32589f4a258e4",
+    "splits/fold4.csv": "fe338cee301d943b9f89adecc15fd0fc1259adb71f95d2873cd1a1efbfff6e99",
+    "splits/fold5.csv": "c6f84c9fbb9edc386dff7665b51c7bcc887453e4334857f1575765ae30a104c5",
+    "splits/manifest.json": "c11bba27c829143c2191e3199eef6473db9489edda77d8686c4d0ba8709f75fb"
+  },
+  "reference_interpretation": {
+    "intra_attention": "self-attention over the three modalities within each entity",
+    "cross_attention": "each entity queries the other two; the molecule row implements molecule Q versus both protein K,V",
+    "contrastive": "sum over molecule-to-protein positive pairs; denominator contains all other final entity embeddings in the batch"
+  },
+  "legacy_classifier_checkpoints_reused": false,
+  "supplement_sha256": "901f2c45493f152c7065c1f68c69cebf29a5bf242de47d56f93e127b5e76904f"
+}
