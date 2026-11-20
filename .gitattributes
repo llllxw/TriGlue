@@ -1,4 +1,6 @@
-*.pth filter=lfs diff=lfs merge=lfs -text
-*.pt filter=lfs diff=lfs merge=lfs -text
-*.bin binary
-*.npy binary
+*.py text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.yml text eol=lf
+data/*.csv -text whitespace=cr-at-eol
+splits/* -text whitespace=cr-at-eol
