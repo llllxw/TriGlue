@@ -19,10 +19,6 @@
   "split_origin": "Reconstructed from the exact final-data Release parent groups; not asserted to be historical experiment fold IDs",
   "file_sha256": {
     "data/dataset.csv": "b7ff6b7802f9874e0871e54e5e10ed218341accd1723328e2377cc8cd109b893",
-    "data/groups.csv": "2964aed03e18352aa882a5daf5f0827135ec515f036986c1b72a23bb39156f9d",
-    "data/parent_links.csv": "22a83c99c63bcdffe37a3fc078a222692e36cba3a65be60e56b4ddd2b6a9f77f",
-    "data/prepared_triplets.csv": "575f9b9f363bb2e5cc22cf8adb85c7cd7c1b110794c9b7ba373e22ee3627ef0c",
-    "data/sequences.csv": "0c211100fe9c10ec5023537eb11f05b6171dedd9fee3ca6cf9a6d9379297568b",
     "splits/fold1.csv": "f3e4e09fe04a9775667ea81fc5ecad3cd9e20e21d9fc288e8a744bfedd53b590",
     "splits/fold2.csv": "721707fe6b9cb7d4696cbab830f6f8484d95e6c66ea92a328f0596c1c3d208e6",
     "splits/fold3.csv": "01a9d0aa688a92909d6a14c8cb3f0cee04ff9366b6d0f45ebca32589f4a258e4",

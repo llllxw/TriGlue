@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pandas as pd
 
 from evaluate import evaluate
-from verify_inputs import verify
+from verify_inputs import prepare_triplets, verify
 from uncertainty import ensemble_summary
 import numpy as np
 
@@ -18,6 +18,7 @@ def main():
     root = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--feature-root', required=True)
+    parser.add_argument('--metadata', type=Path, help='release dataset_metadata.csv; defaults to the metadata directory beside the features')
     parser.add_argument('--molformer-model', required=True)
     parser.add_argument('--unimol-dir', required=True)
     parser.add_argument('--output-dir', required=True)
@@ -27,9 +28,12 @@ def main():
     args.feature_root = str(Path(args.feature_root).resolve())
     args.molformer_model = str(Path(args.molformer_model).resolve())
     args.unimol_dir = str(Path(args.unimol_dir).resolve())
-    verify(root / 'data/dataset.csv', root / 'splits', root / 'provenance.json')
+    dataset = root / 'data/dataset.csv'
+    splits = root / 'splits'
+    verify(dataset, splits, root / 'provenance.json')
     settings = json.loads((root / 'config.json').read_text(encoding='utf-8'))
-    prepared = pd.read_csv(root / 'data/prepared_triplets.csv', dtype=str, keep_default_na=False)
+    metadata = args.metadata or Path(args.feature_root).parent / 'metadata/dataset_metadata.csv'
+    prepared = prepare_triplets(dataset, splits, metadata)
     output = Path(args.output_dir).resolve()
     if output.exists() and any(output.iterdir()):
         raise FileExistsError('Choose a new output directory')

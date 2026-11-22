@@ -1,85 +1,106 @@
-"""Check the pinned final dataset and reconstructed parent-grouped five-fold partitions."""
-from pathlib import Path
+"""Verify the published dataset and splits, and prepare inputs from release metadata."""
 import argparse
-import hashlib
+from collections import Counter
 import json
-import sys
-sys.path.insert(0,str(Path(__file__).resolve().parent))
+from pathlib import Path
 
 import pandas as pd
-from schema import _canonical_smiles
+
+from schema import _canonical_smiles, read_csv, sha256_file
 
 
 def verify(dataset, splits, provenance):
-    record = json.loads(Path(provenance).read_text(encoding='utf-8'))
-    expected = record['dataset_sha256']
-    if hashlib.sha256(Path(dataset).read_bytes()).hexdigest() != expected:
-        raise ValueError('Dataset differs from the pinned final Supplementary Table 1')
-    frame = pd.read_csv(dataset, dtype=str, keep_default_na=False)
-    if frame.sample_id.duplicated().any() or not frame.label.isin(['0', '1']).all():
-        raise ValueError('Require unique sample_id and binary labels')
+    splits = Path(splits)
+    provenance = Path(provenance)
+    record = json.loads(provenance.read_text(encoding="utf-8"))
+    if sha256_file(Path(dataset)) != record["dataset_sha256"]:
+        raise ValueError("Dataset differs from the published Supplementary Table 1")
+    frame = read_csv(dataset)
+    if frame.sample_id.duplicated().any() or not frame.label.isin(["0", "1"]).all():
+        raise ValueError("Require unique sample IDs and binary labels")
+    for relative, digest in record["file_sha256"].items():
+        path = Path(dataset) if relative == "data/dataset.csv" else splits / Path(relative).name
+        if sha256_file(path) != digest:
+            raise ValueError(f"File differs from the published version: {path}")
+
     ids = set(frame.sample_id)
-    root=Path(provenance).parent
-    prepared=pd.read_csv(root/'data/prepared_triplets.csv',dtype=str,keep_default_na=False)
-    groups=pd.read_csv(root/'data/groups.csv',dtype=str,keep_default_na=False)
-    links=pd.read_csv(root/'data/parent_links.csv',dtype=str,keep_default_na=False)
-    sequences=pd.read_csv(root/'data/sequences.csv',dtype=str,keep_default_na=False)
-    if set(prepared.triplet_id)!=ids or prepared.triplet_id.duplicated().any():
-        raise ValueError('Prepared features do not cover the final dataset exactly once')
-    if set(groups.sample_id)!=ids or groups.sample_id.duplicated().any():
-        raise ValueError('Parent-group mapping does not cover the final dataset')
-    truth=frame.set_index('sample_id')
-    expected_groups=groups.set_index('sample_id').parent_group_id.to_dict()
-    sequence_map=sequences.set_index('protein_id').sequence.to_dict()
-    for row in sequences.itertuples():
-        if hashlib.sha256(row.sequence.encode()).hexdigest()!=row.sequence_sha256:
-            raise ValueError('Protein sequence digest mismatch')
-    exact={}
-    for row in prepared.itertuples():
-        original=truth.loc[row.triplet_id]
-        if row.label!=original.label or _canonical_smiles(row.smiles)[0]!=_canonical_smiles(original.SMILES)[0] or row.parent_group_id!=expected_groups[row.triplet_id]:
-            raise ValueError('Prepared row differs from the final dataset or parent groups')
-        if row.protein1_sequence!=sequence_map[row.protein1_id] or row.protein2_sequence!=sequence_map[row.protein2_id]:
-            raise ValueError('Protein feature ID does not match its sequence')
-        key=(_canonical_smiles(row.smiles)[0],*sorted((row.protein1_sequence,row.protein2_sequence)))
-        if key in exact and exact[key]!=row.parent_group_id:
-            raise ValueError('Exact sequence triplet occurs in different parent groups')
-        exact[key]=row.parent_group_id
-    if any(expected_groups[r.sample_id]!=expected_groups[r.parent_sample_id] for r in links.itertuples()):
-        raise ValueError('Derived negative and contributing positive parent have different groups')
-    tests = []
-    for name in ['fixed'] + ['fold' + str(fold) for fold in range(1, 6)]:
-        filename = Path(splits) / (name + '.csv')
-        if not filename.is_file():
-            raise FileNotFoundError('Pinned final-data partition required: ' + str(filename))
-        table = pd.read_csv(filename, dtype=str, keep_default_na=False)
-        required = {'sample_id', 'partition', 'parent_group_id'}
-        if not required.issubset(table.columns):
-            raise ValueError(str(filename) + ': require ' + str(sorted(required)))
+    groups = None
+    test_counts = Counter()
+    for name in ["fixed"] + [f"fold{i}" for i in range(1, 6)]:
+        table = read_csv(splits / f"{name}.csv")
         if table.sample_id.duplicated().any() or set(table.sample_id) != ids:
-            raise ValueError(str(filename) + ': partition IDs must cover the final dataset exactly once')
-        if set(table.partition) != {'train', 'val', 'test'} or table.parent_group_id.eq('').any():
-            raise ValueError(str(filename) + ': require three partitions and nonempty parent groups')
-        if table.groupby('parent_group_id').partition.nunique().gt(1).any():
-            raise ValueError(str(filename) + ': a parent group crosses partitions')
-        if any(expected_groups[r.sample_id]!=r.parent_group_id for r in table.itertuples()):
-            raise ValueError('Fold parent groups differ from the fixed parent-group mapping')
-        if name != 'fixed':
-            tests.extend(table.loc[table.partition.eq('test'), 'sample_id'])
-    if len(tests) != len(ids) or set(tests) != ids:
-        raise ValueError('Each sample must appear in exactly one outer test fold')
-    for relative, digest in record.get('file_sha256', {}).items():
-        path = root / relative
-        if not path.is_file() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
-            raise ValueError('Pinned data/split artifact differs: ' + relative)
-    return {'status': 'PASS', 'n_samples': len(frame), 'n_folds': 5,
-            'scope': 'file identity, parent-group membership and fold coverage; requires authentic supplied parent links'}
+            raise ValueError(f"{name}: each dataset sample must occur exactly once")
+        if set(table.partition) != {"train", "val", "test"} or table.parent_group_id.eq("").any():
+            raise ValueError(f"{name}: expected three partitions and nonempty parent groups")
+        if table.groupby("parent_group_id").partition.nunique().gt(1).any():
+            raise ValueError(f"{name}: parent group crosses partitions")
+        current = table.set_index("sample_id").parent_group_id.sort_index()
+        if groups is None:
+            groups = current
+        elif not current.equals(groups):
+            raise ValueError(f"{name}: inconsistent parent groups across splits")
+        if name != "fixed":
+            test_counts.update(table.loc[table.partition.eq("test"), "sample_id"])
+    if test_counts != Counter(frame.sample_id):
+        raise ValueError("Each sample must appear in exactly one outer test fold")
+    return {"status": "PASS", "n_samples": len(frame), "n_folds": 5,
+            "scope": "dataset and split checksums, parent groups and test-fold coverage"}
 
 
-if __name__ == '__main__':
+def prepare_triplets(dataset, splits, metadata):
+    """Join final sample IDs to the published feature IDs in dataset order."""
+    metadata = Path(metadata)
+    if not metadata.is_file():
+        raise FileNotFoundError(f"Release metadata missing: {metadata}. Extract TriGlueDesktop-data-v0.1.0.tar.gz or supply --metadata.")
+    splits = Path(splits)
+    manifest = json.loads((splits / "manifest.json").read_text(encoding="utf-8"))
+    if sha256_file(metadata) != manifest["metadata_sha256"]:
+        raise ValueError(f"Metadata differs from the published feature release: {metadata}")
+    source = read_csv(dataset)
+    meta = read_csv(metadata).set_index("sample_id", verify_integrity=True)
+    if source.original_sample_id.duplicated().any() or set(source.original_sample_id) != set(meta.index):
+        raise ValueError("The dataset and feature catalog must match one-to-one on original sample ID")
+    meta = meta.loc[source.original_sample_id].copy()
+    if meta.label.tolist() != source.label.tolist() or meta.SMILES.tolist() != source.SMILES.tolist():
+        raise ValueError("Labels or compounds differ between the dataset and the feature catalog")
+
+    fixed = read_csv(splits / "fixed.csv").set_index("sample_id")
+    if meta.parent_group.tolist() != fixed.loc[source.sample_id, "parent_group_id"].tolist():
+        raise ValueError("Published split and feature catalog have different parent groups")
+    groups = meta.parent_group.to_dict()
+    link_count = 0
+    exact_groups = {}
+    for row in meta.itertuples():
+        parents = row.all_parent_sample_ids or row.parent_sample_id
+        for parent in filter(None, parents.split(";")):
+            if groups.get(parent) != row.parent_group:
+                raise ValueError(f"Parent link crosses groups or cannot be resolved: {row.Index}, {parent}")
+            link_count += 1
+        smiles, error = _canonical_smiles(row.canonical_smiles)
+        if error:
+            raise ValueError(f"{row.Index}: {error}")
+        key = (smiles, *sorted((row.protein1_seq, row.protein2_seq)))
+        if exact_groups.setdefault(key, row.parent_group) != row.parent_group:
+            raise ValueError("Identical sequence triplet occurs in different parent groups")
+    if link_count != manifest["n_parent_links"]:
+        raise ValueError("Parent link count differs from the split manifest")
+
+    columns = {"ID": "compound_id", "canonical_smiles": "smiles", "protein1": "protein1_id",
+               "protein2": "protein2_id", "protein1_seq": "protein1_sequence",
+               "protein2_seq": "protein2_sequence", "label": "label", "parent_group": "parent_group_id"}
+    prepared = meta[list(columns)].rename(columns=columns).reset_index(drop=True)
+    prepared.insert(0, "triplet_id", source.sample_id.to_numpy())
+    return prepared
+
+
+if __name__ == "__main__":
     root = Path(__file__).resolve().parent
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--dataset', default=str(root / 'data' / 'dataset.csv'))
-    parser.add_argument('--splits', default=str(root / 'splits'))
+    parser.add_argument("--dataset", type=Path, default=root / "data/dataset.csv")
+    parser.add_argument("--splits", type=Path, default=root / "splits")
+    parser.add_argument("--metadata", type=Path, help="also check the extracted release feature catalog and parent links")
     args = parser.parse_args()
-    print(json.dumps(verify(args.dataset, args.splits, root / 'provenance.json'), indent=2))
+    report = verify(args.dataset, args.splits, root / "provenance.json")
+    if args.metadata is not None:
+        report["verified_feature_rows"] = len(prepare_triplets(args.dataset, args.splits, args.metadata))
+    print(json.dumps(report, indent=2))

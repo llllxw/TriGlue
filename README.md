@@ -15,13 +15,7 @@ Extract the three `TriGlueDesktop-{data,encoders,models}-v0.1.0.tar.gz` archives
 
 ## Data
 
-| File in `data/` | Contents |
-| --- | --- |
-| `dataset.csv` | Supplementary Table 1, including triplets, labels and sources |
-| `prepared_triplets.csv` | Training input with protein sequences, feature identifiers, labels and parent group for each triplet |
-| `sequences.csv` | Protein identifier, sequence and checksum |
-| `groups.csv` | Parent group for each sample |
-| `parent_links.csv` | Links from generated negatives to their contributing positive parents |
+`data/dataset.csv` is Supplementary Table 1 and contains the triplets, labels and sources. To prepare training inputs, `run_cv.py` matches each row to the protein sequences, feature identifiers and parent groups in `resources/metadata/dataset_metadata.csv` from the data archive.
 
 The fixed split (Section 2.1) and five cross-validation folds (Section 2.5) are in `splits/`. Each parent group belongs to one partition per split. Use the following Bash commands to write the corresponding input tables.
 
