@@ -6,6 +6,7 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
+from functools import lru_cache
 
 import numpy as np
 import pandas as pd
@@ -20,58 +21,11 @@ REQUIRED_SCORE_COLUMNS = (
 )
 SEQUENCE_COLUMNS = ("protein1_sequence", "protein2_sequence")
 STRUCTURE_COLUMNS = ("protein1_structure", "protein2_structure")
-PROTEIN_ALPHABET = set("ACDEFGHIKLMNPQRSTVWYBXZOUJ")
+PROTEIN_ALPHABET = set("ACDEFGHIKLMNPQRSTVWYX")
 SAFE_ID = re.compile(r"^[A-Za-z0-9_.:+-]+$")
 RAW_COLUMNS = ("smiles", "protein1_sequence", "protein2_sequence")
 
 
-def normalize_raw_triplets(frame: pd.DataFrame, *, base_dir: str | Path = ".") -> pd.DataFrame:
-    """Normalize three-field input without changing existing explicit identifiers.
-
-    Content IDs are stable across files; row IDs retain duplicate hypotheses.
-    RDKit is mandatory here: validation must never silently accept bad chemistry.
-    """
-    from rdkit import Chem
-
-    frame = frame.copy().reset_index(drop=True).fillna("")
-    if "SMILES" in frame and "smiles" not in frame:
-        frame = frame.rename(columns={"SMILES": "smiles"})
-    missing = [name for name in RAW_COLUMNS if name not in frame]
-    if missing:
-        raise ValueError(f"raw input requires {RAW_COLUMNS}; missing {missing}")
-    if frame.empty:
-        raise ValueError("input table contains no rows")
-    for column in ("triplet_id", "compound_id", "protein1_id", "protein2_id", *STRUCTURE_COLUMNS):
-        if column not in frame:
-            frame[column] = ""
-    for index, row in frame.iterrows():
-        smiles = str(row["smiles"]).strip()
-        mol = Chem.MolFromSmiles(smiles)
-        if mol is None or mol.GetNumAtoms() == 0:
-            raise ValueError(f"row {index + 2}: invalid or empty SMILES")
-        canonical = Chem.MolToSmiles(mol, canonical=True, isomericSmiles=True)
-        # Raw mode is normalized once. Prepared legacy inputs bypass this path.
-        frame.at[index, "input_smiles"] = smiles
-        frame.at[index, "smiles"] = canonical
-        if not str(row["compound_id"]).strip():
-            frame.at[index, "compound_id"] = "cmp_" + hashlib.sha256(canonical.encode()).hexdigest()[:24]
-        if not str(row["triplet_id"]).strip():
-            frame.at[index, "triplet_id"] = f"triplet_{index + 1:08d}"
-        for side in ("protein1", "protein2"):
-            sequence = re.sub(r"\s+", "", str(row[f"{side}_sequence"])).upper()
-            if not sequence or len(sequence) > 1200 or set(sequence) - PROTEIN_ALPHABET:
-                raise ValueError(f"row {index + 2}: {side} requires a valid sequence of 1–1200 residues; no truncation is performed")
-            frame.at[index, f"{side}_sequence"] = sequence
-            if not str(row[f"{side}_id"]).strip():
-                frame.at[index, f"{side}_id"] = "prot_" + hashlib.sha256(sequence.encode()).hexdigest()[:24]
-            value = str(row[f"{side}_structure"]).strip()
-            if value:
-                path = Path(value).expanduser()
-                frame.at[index, f"{side}_structure"] = str((Path(base_dir) / path).resolve())
-    report = audit_triplets(frame, require_sequences=True)
-    if report["status"] != "PASS":
-        raise ValueError(json.dumps(report["issues"][:20], ensure_ascii=False))
-    return frame
 
 
 @dataclass(frozen=True)
@@ -94,13 +48,12 @@ def read_csv(path: str | Path) -> pd.DataFrame:
     return frame
 
 
+@lru_cache(maxsize=4096)
 def _canonical_smiles(value: str) -> tuple[str | None, str | None]:
     try:
         from rdkit import Chem
     except ImportError:
-        if not value.strip():
-            return None, "empty SMILES"
-        return value.strip(), None
+        raise RuntimeError('RDKit is required to validate molecular structures')
     mol = Chem.MolFromSmiles(value.strip())
     if mol is None:
         return None, "RDKit could not parse SMILES"
@@ -110,8 +63,6 @@ def _canonical_smiles(value: str) -> tuple[str | None, str | None]:
 def _feature_paths(root: Path, compound_id: str, protein_id: str) -> dict[str, Path]:
     return {
         "compound_graph": root / "compound_graph" / f"{compound_id}.bin",
-        "compound_embedding": root / "compound_3d_embedding" / f"{compound_id}.npy",
-        "protein_one_hot": root / "protein_embedding" / "one_hot" / f"{protein_id}.npy",
         "protein_graph": root / "protein_graph" / f"{protein_id}.bin",
         "protein_esm2": root / "protein_3d_embedding" / f"{protein_id}.npy",
     }
@@ -220,7 +171,7 @@ def audit_triplets(
             p2_paths = _feature_paths(
                 root, str(row["compound_id"]), str(row["protein2_id"])
             )
-            for key in ("protein_one_hot", "protein_graph", "protein_esm2"):
+            for key in ("protein_graph", "protein_esm2"):
                 paths[f"protein2_{key}"] = p2_paths[key]
             for key, path in paths.items():
                 if path in checked:
@@ -260,9 +211,6 @@ def audit_triplets(
                 if not np.isfinite(array).all():
                     issues.append(AuditIssue("error", line, key, f"nonfinite values in {path}"))
                 expected = {
-                    "compound_embedding": 768,
-                    "protein_one_hot": 25,
-                    "protein2_protein_one_hot": 25,
                     "protein_esm2": 1280,
                     "protein2_protein_esm2": 1280,
                 }.get(key)

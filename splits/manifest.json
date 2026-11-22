@@ -1,0 +1,54 @@
+{
+  "origin": "Reconstructed from the exact final-data Release parent groups; not asserted to be historical experiment fold IDs",
+  "sklearn": "1.2.2",
+  "split_seed": 2025,
+  "fixed_split": {
+    "file": "fixed.csv",
+    "selection": "Section 2.1: first outer fold and first inner fold",
+    "train": 4491,
+    "val": 1506,
+    "test": 1487
+  },
+  "outer": "StratifiedGroupKFold(n_splits=5, shuffle=True)",
+  "inner": "4 folds; validation positive fraction closest to outer remaining set; lowest index breaks ties",
+  "folds": [
+    {
+      "fold": 1,
+      "train": 4495,
+      "val": 1502,
+      "test": 1487,
+      "inner_fold_selected": 4
+    },
+    {
+      "fold": 2,
+      "train": 4496,
+      "val": 1526,
+      "test": 1462,
+      "inner_fold_selected": 2
+    },
+    {
+      "fold": 3,
+      "train": 4447,
+      "val": 1487,
+      "test": 1550,
+      "inner_fold_selected": 2
+    },
+    {
+      "fold": 4,
+      "train": 4533,
+      "val": 1513,
+      "test": 1438,
+      "inner_fold_selected": 4
+    },
+    {
+      "fold": 5,
+      "train": 4469,
+      "val": 1468,
+      "test": 1547,
+      "inner_fold_selected": 4
+    }
+  ],
+  "metadata_sha256": "a5a592bb027e8989273811384b233f9b4300c846c58e2eeea3f709acb9496f66",
+  "n_parent_groups": 3633,
+  "n_parent_links": 3831
+}

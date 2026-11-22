@@ -1,9 +1,22 @@
 name: triglue
 channels:
   - conda-forge
-  - defaults
+  - nodefaults
 dependencies:
-  - python=3.8.20
+  - python=3.8
+  - numpy=1.24.3
+  - pandas=1.4.2
+  - scikit-learn=1.2.2
+  - scipy=1.10.1
+  - rdkit=2020.09.1
+  - numba=0.58.1
+  - importlib-metadata=8.5.0
+  - zipp=3.20.2
+  - addict=2.4.0
   - pip
   - pip:
-      - -r requirements.txt
+      - --extra-index-url https://download.pytorch.org/whl/cpu
+      - torch==2.4.1+cpu
+      - dgl==1.1.2
+      - transformers==4.46.3
+      - accelerate==1.0.1

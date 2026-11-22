@@ -1,107 +1,43 @@
-# TriGlue Enables Interpretable Prediction of Molecular Glue-Induced Ternary Complex Formation
+# TriGlue final-data retraining
 
-Train TriGlue and score candidate triplets using a compound SMILES and two protein sequences. Binding-interface annotations and ternary structures are not required. Protein graphs are built from monomer PDB structures: supply existing structures or use the preprocessing ESMFold option to generate missing ones.
+Train one three-entity model on the final 7,484-row Supplementary Table 1. The fixed partitions group each parent triplet with its derived negatives. The five seeds and training hyperparameters are defined in `config.json`.
 
-[中文说明](QUICKSTART.zh-CN.md)
+## Setup
 
-## Install
+Create the CPU environment with `conda env create -f environment.yml` and activate it with `conda activate triglue`. Install `python -m pip install --no-deps unimol-tools==0.1.3.post1` to preserve the pinned RDKit build. Run `python verify_inputs.py`.
 
-```bash
-conda env create -f environment.yml
-conda activate triglue
-python scripts/smoke_test.py
-```
+Extract the resource archives into one directory. Substitute these paths in the commands below. The archives are available from the [TriGlue release](https://github.com/llllxw/TriGlue/releases/tag/v0.1.0).
 
-Use Linux and the supplied environment. Prepared-feature prediction supports CPU; memory requirements depend on sequence length. Prepare MoLFormer, ESM-2 and Uni-Mol2:
+| Argument placeholder | Extracted path | Archive |
+| --- | --- | --- |
+| `FEATURES` | `resources/features` | `TriGlueDesktop-data-v0.1.0.tar.gz` |
+| `UNIMOL` | `resources/encoders/unimol` | `TriGlueDesktop-encoders-v0.1.0.tar.gz` |
+| `MOLFORMER` | `resources/huggingface/hub/models--ibm-research--MoLFormer-XL-both-10pct/snapshots/7b12d946c181a37f6012b9dc3b002275de070314` | `TriGlueDesktop-models-v0.1.0.tar.gz` |
 
-```bash
-python -c "from huggingface_hub import snapshot_download; snapshot_download('ibm-research/MoLFormer-XL-both-10pct', revision='7b12d946c181a37f6012b9dc3b002275de070314', local_dir='models/molformer')"
-python -c "import esm; esm.pretrained.esm2_t33_650M_UR50D()"
-python -c "from huggingface_hub import hf_hub_download; hf_hub_download('dptech/Uni-Mol2', filename='modelzoo/84M/checkpoint.pt', local_dir='models/unimol2')"
-export UNIMOL_WEIGHT_DIR="$PWD/models/unimol2"
-```
+The research workflow uses the MoLFormer snapshot from the last archive and trains the TriGlue classifier locally.
 
-Keep `UNIMOL_WEIGHT_DIR` set when preprocessing. For the automatic structure-generation commands below, also prepare ESMFold; this step is unnecessary when complete matching PDB structures are supplied:
+## Train and evaluate
+
+Write the 25 commands and fixed training, validation and test tables:
 
 ```bash
-python -c "from huggingface_hub import snapshot_download; snapshot_download('facebook/esmfold_v1', local_dir='models/esmfold')"
+python run_cv.py --feature-root FEATURES --molformer-model MOLFORMER --unimol-dir UNIMOL --output-dir results/plan --dry-run
 ```
 
-## Data
+The `inputs/fixed` directory holds the single split reconstructed using the rule in Section 2.1. It contains 4,491 training, 1,506 validation and 1,487 test samples. The five `inputs/fold*` directories follow the selection rule in Section 2.5 and average 4,488.0, 1,499.2 and 1,496.8 samples, respectively. The manuscript reports 4,489, 1,498 and 1,497 in both sections.
 
-Prediction CSV files require `smiles,protein1_sequence,protein2_sequence`. Training also requires `triplet_id,label`; identifiers must not overlap between training and validation, and labels must be 0 or 1. Use UTF-8 encoding.
-
-`examples/train.csv` and `examples/val.csv` are synthetic examples for checking the workflow. Their labels have no experimental meaning; replace them with your labelled data for scientific use.
-
-Provide sequences, not protein names. Use standard amino-acid letters and no more than 1200 residues per sequence. Compounds must contain no more than 256 atoms including hydrogens. Optional `protein1_structure` and `protein2_structure` columns accept PDB paths matching the complete sequences; use `--structure-backend none` for this route.
-
-## Prepare features
+Run one cross-validation fold:
 
 ```bash
-python data_process.py --input examples/train.csv --output-root features/train \
-  --device cuda --fold-device cuda --fold-model-path models/esmfold
-python data_process.py --input examples/val.csv --output-root features/val \
-  --device cuda --fold-device cuda --fold-model-path models/esmfold
+python train.py --train results/plan/inputs/fold1/train.csv --val results/plan/inputs/fold1/val.csv --feature-root FEATURES --molformer-model MOLFORMER --unimol-dir UNIMOL --output-dir results/model --device cpu
+python predict.py --input results/plan/inputs/fold1/test.csv --feature-root FEATURES --molformer-model MOLFORMER --unimol-dir UNIMOL --checkpoint results/model/best.pth --run-config results/model/run_config.json --output results/test.csv
+python evaluate.py --input results/test.csv --score-column inducibility_score_mean --output results/test_metrics.csv
 ```
 
-Successful preparation writes `prepared_triplets.csv`. Add `--validate-only` to check input format only. If both protein PDB paths are supplied, replace `--fold-device cuda --fold-model-path models/esmfold` with `--structure-backend none`.
+For a complete experiment run `run_cv.py` with a fresh output directory and omit `--dry-run`. The results include fold-level scores, pooled out-of-fold predictions for each seed, the mean and sample SD across those five metrics in `five_seed_summary.csv`, and a separate ensemble analysis. Raw probabilities are the primary ranking scores for comparison with historical Table S2. The validation-set temperature is used for calibrated scores. Each trained classifier checkpoint is written locally.
 
-## Train
+## Implementation
 
-```bash
-python train.py --train features/train/prepared_triplets.csv \
-  --val features/val/prepared_triplets.csv \
-  --feature-root features/train --val-feature-root features/val \
-  --molformer-model models/molformer --device cuda --output-dir results/run1
-```
+MoLFormer-XL, ESM-2 and Uni-Mol2 are frozen. The protein TextCNN, both GINs, projections, fusion and prediction layers are trained. Training applies SMILES masking and graph-edge dropout. RDKit builds an ETKDGv3 conformer for each molecular SMILES, initialized with seed 42 and MMFF-optimized when parameterized. On each training occurrence, Gaussian noise with standard deviation 0.02 Å perturbs the heavy-atom coordinates immediately before frozen Uni-Mol2 encoding. Validation and prediction encode the same clean conformers. Protein structures contribute through the released residue graphs, and ESM-2 takes protein **sequences**. A failure to generate a 3D conformer stops the run and identifies the input.
 
-Defaults are Adam, learning rate 1e-4, batch size 16 and at most 50 epochs, with early stopping after 20 epochs without improvement in validation accuracy. The loss is BCE plus 0.1 times InfoNCE. Training uses 15% SMILES token masking (80/10/10), 10% graph edge dropout and Gaussian noise with σ=0.02 on Uni-Mol2/ESM-2 embeddings. Validation and prediction disable augmentation. Add `--epochs 1` for a single-epoch execution check; this shortens the default training duration.
-
-Use a new output directory for each run. Training saves `best.pth`, `run_config.json`, training records and validation predictions.
-
-## Predict
-
-```bash
-python predict.py --input features/val/prepared_triplets.csv --feature-root features/val \
-  --checkpoint results/run1/best.pth --run-config results/run1/run_config.json \
-  --molformer-model models/molformer --device cpu --output results/predictions.csv
-```
-
-For new candidates, prepare their features as above and substitute the input and feature paths. `inducibility_score_mean` is the model score; `rank_within_protein_pair` ranks candidates within the same protein pair. The score is not a calibrated experimental success probability.
-
-If execution fails, inspect the reported row/path and `feature_build_summary.json`. Common causes are missing model files, invalid inputs, sequence–structure mismatches and insufficient GPU memory.
-
-## Uncertainty and interpretation
-
-Train multiple models with different `--seed` values as above, for example in `results/run1` and `results/run2`. Each run saves `validation_predictions.csv`. Prepare features for a separate test set that does not overlap the validation set, then predict with each model:
-
-```bash
-for run in run1 run2; do
-  python predict.py --input features/test/prepared_triplets.csv --feature-root features/test \
-    --checkpoint results/$run/best.pth --run-config results/$run/run_config.json \
-    --molformer-model models/molformer --device cpu --output results/$run/test_predictions.csv
-done
-```
-
-Run calibration and uncertainty analysis. List validation and prediction files in matching model order; append more files for additional models:
-
-```bash
-python calibration.py \
-  --validation results/run1/validation_predictions.csv results/run2/validation_predictions.csv \
-  --predictions results/run1/test_predictions.csv results/run2/test_predictions.csv \
-  --output-dir results/calibration
-```
-
-Outputs in `results/calibration` include calibrated predictions in CSV, temperature parameters, ECE/NLL/Brier metrics and reliability diagrams before and after calibration, and uncertainty and confidence distributions for correct and incorrect classifications. `ensemble_sd` is the sample standard deviation of individually calibrated model probabilities; `calibrated_confidence` is the calibrated classification confidence.
-
-At least two models are required. Temperatures are fitted only on labelled validation predictions. Test predictions containing `label` produce all evaluation outputs; unlabelled predictions produce only calibrated predictions and temperatures. Use a new output directory.
-
-Run atom/residue occlusion for one candidate:
-
-```bash
-python explain.py --input features/val/prepared_triplets.csv --feature-root features/val \
-  --triplet-id val_1 --checkpoint results/run1/best.pth --run-config results/run1/run_config.json \
-  --molformer-model models/molformer --device cpu --output-dir results/explanation_val1
-```
-
-Outputs include atom and residue importance CSV files, a highlight image of up to six influential atoms, and a residue-importance image. `delta_logit` is the baseline logit minus the occluded logit; `abs_delta_logit` is its absolute value. Atom occlusion zeros one molecular graph-node feature vector. Residue occlusion zeros one one-hot position, keeping the other channels fixed.
+The 21-channel protein TextCNN input excludes unknown residues. The fixed ESM-2 and protein-graph features retain the source sequence and structure indexing. The supplied partitions were reconstructed for the final dataset. The archived training runs that produced Table S2 used a different dataset and checkpoint-selection rule. Their metrics do not measure this retrained model.
