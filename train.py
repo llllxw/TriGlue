@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import hashlib
 import random
 import sys
 from pathlib import Path
@@ -25,8 +24,7 @@ def parser():
     p.add_argument('--val-feature-root', help='validation features; defaults to --feature-root')
     p.add_argument('--output-dir', required=True)
     p.add_argument('--molformer-model', required=True, help='local MoLFormer snapshot')
-    p.add_argument('--cached-features-only', action='store_true',
-                   help='explicitly train without unavailable raw-coordinate augmentation')
+    p.add_argument('--unimol-dir', required=True, help='encoder directory containing modelzoo/84M/checkpoint.pt')
     p.add_argument('--device', choices=['cpu', 'cuda', 'auto'], default='auto')
     p.add_argument('--seed', type=int, default=defaults['seed'])
     p.add_argument('--epochs', type=int, default=defaults['epochs'])
@@ -58,8 +56,12 @@ def validate_split(train, val):
     if set(train.triplet_id) & set(val.triplet_id):
         raise ValueError('training and validation triplet_id overlap')
     def keys(frame):
-        return {(_canonical_smiles(row.smiles)[0], *sorted((row.protein1_sequence, row.protein2_sequence)))
-                for row in frame.itertuples()}
+        result = set()
+        for row in frame.itertuples():
+            pair = (row.protein1_sequence, row.protein2_sequence)
+            normalized = sorted(''.join(sequence.split()).upper() for sequence in pair)
+            result.add((_canonical_smiles(row.smiles)[0], *normalized))
+        return result
     if keys(train) & keys(val):
         raise ValueError('the same compound/protein triplet occurs in train and validation')
     if 'parent_group_id' in train and 'parent_group_id' in val:
@@ -69,9 +71,6 @@ def validate_split(train, val):
 
 def main(argv=None):
     args = parser().parse_args(argv)
-    if not args.cached_features_only:
-        raise ValueError('Published cached embeddings cannot reproduce coordinate-noise augmentation. '
-                         'Use --cached-features-only for the documented cached-feature training path.')
     if args.epochs < 1 or args.batch_size < 2 or args.patience < 1 or not np.isfinite(args.lr) or args.lr <= 0:
         raise ValueError('epochs/patience must be positive, batch-size >= 2, lr finite and positive')
     if not Path(args.molformer_model).is_dir():
@@ -99,6 +98,8 @@ def main(argv=None):
     device = _resolve_device(torch, args.device)
     model_module.TriComplexClassifier.MOLFORMER = str(Path(args.molformer_model).resolve())
     settings = json.loads(Path(__file__).with_name('config.json').read_text(encoding='utf-8'))
+    from coordinate_features import CoordinateEncoder
+    coordinate_encoder = CoordinateEncoder(args.unimol_dir, device)
     model = model_module.TriComplexClassifier(prot1d_dim=settings['protein_one_hot_dim'], dropout=settings['dropout'],
         enable_smiles_cache=False).to(device)
     # Use the same deterministic frozen encoder protocol as prediction.
@@ -117,7 +118,10 @@ def main(argv=None):
     output.mkdir(parents=True, exist_ok=True)
     config = dict(vars(args), dropout=settings['dropout'], alpha=settings['contrastive_weight'], optimizer='adam', weight_decay=0.0,
                   smiles_mask_rate=settings['smiles_mask_rate'], edge_drop=settings['edge_drop'],
-                  coordinate_noise_sigma=settings['coordinate_noise_sigma'], coordinate_noise_applied=False,
+                  coordinate_noise_sigma=settings['coordinate_noise_sigma'], coordinate_noise_applied=True,
+                  coordinate_input='compound heavy-atom conformer in angstroms, before frozen Uni-Mol2',
+                  unimol_sha256=coordinate_encoder.checkpoint_sha256,
+                  trainable_modules=sorted({n.split('.')[0] for n,p in model.named_parameters() if p.requires_grad}),
                   model_id=model_module.MODEL_ID, selection_metric='validation_accuracy',
                   settings_sha256=settings_digest(),model_source_sha256=source_hashes(),
                   molformer_eval_protocol='checkpoint_fixed_random_features_v1',
@@ -133,7 +137,8 @@ def main(argv=None):
         for features, labels in loader:
             labels = labels.to(device)
             optimizer.zero_grad(set_to_none=True)
-            logits, contrastive = model(*_move_batch(features, device), return_contrastive=True,
+            inputs = _move_batch(features, device, coordinate_encoder, settings['coordinate_noise_sigma'])
+            logits, contrastive = model(*inputs, return_contrastive=True,
                                         contrastive_mask=labels.eq(1))
             loss = criterion(logits.reshape(-1), labels) + settings['contrastive_weight'] * contrastive
             if not torch.isfinite(loss):
@@ -147,7 +152,7 @@ def main(argv=None):
         scores = []; validation_logits = []
         with torch.inference_mode():
             for features, _ in val_loader:
-                logits = model(*_move_batch(features, device)).reshape(-1)
+                logits = model(*_move_batch(features, device, coordinate_encoder)).reshape(-1)
                 validation_logits.extend(logits.cpu().tolist())
                 scores.extend(torch.sigmoid(logits).cpu().tolist())
         if not np.isfinite(scores).all():

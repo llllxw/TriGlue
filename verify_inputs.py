@@ -48,9 +48,8 @@ def verify(dataset, splits, provenance):
     if any(expected_groups[r.sample_id]!=expected_groups[r.parent_sample_id] for r in links.itertuples()):
         raise ValueError('Derived negative and contributing positive parent have different groups')
     tests = []
-    group_members = {}
-    for fold in range(1, 6):
-        filename = Path(splits) / ('fold' + str(fold) + '.csv')
+    for name in ['fixed'] + ['fold' + str(fold) for fold in range(1, 6)]:
+        filename = Path(splits) / (name + '.csv')
         if not filename.is_file():
             raise FileNotFoundError('Pinned final-data partition required: ' + str(filename))
         table = pd.read_csv(filename, dtype=str, keep_default_na=False)
@@ -65,11 +64,8 @@ def verify(dataset, splits, provenance):
             raise ValueError(str(filename) + ': a parent group crosses partitions')
         if any(expected_groups[r.sample_id]!=r.parent_group_id for r in table.itertuples()):
             raise ValueError('Fold parent groups differ from the fixed parent-group mapping')
-        for row in table.itertuples():
-            if row.sample_id in group_members and group_members[row.sample_id] != row.parent_group_id:
-                raise ValueError('Parent-group identity changes across folds')
-            group_members[row.sample_id] = row.parent_group_id
-        tests.extend(table.loc[table.partition.eq('test'), 'sample_id'])
+        if name != 'fixed':
+            tests.extend(table.loc[table.partition.eq('test'), 'sample_id'])
     if len(tests) != len(ids) or set(tests) != ids:
         raise ValueError('Each sample must appear in exactly one outer test fold')
     for relative, digest in record.get('file_sha256', {}).items():

@@ -33,9 +33,12 @@ def evaluate(labels, scores):
     clipped=np.clip(scores,1e-12,1-1e-12)
     result['NLL']=float(np.mean(-labels*np.log(clipped)-(1-labels)*np.log1p(-clipped)))
     result['Brier']=float(np.mean((scores-labels)**2))
-    bins=np.minimum((scores*15).astype(int),14)
-    result['ECE']=float(sum(np.mean(bins==b)*abs(scores[bins==b].mean()-labels[bins==b].mean())
-                            for b in np.unique(bins)))
+    confidence = np.maximum(scores, 1.0 - scores)
+    correct = predicted == labels
+    bins = np.minimum((confidence * 15).astype(int), 14)
+    result['ECE'] = float(sum(
+        np.mean(bins == b) * abs(confidence[bins == b].mean() - correct[bins == b].mean())
+        for b in np.unique(bins)))
     # Stable sorting provides deterministic tie handling; sample ordering must be fixed.
     ordered = labels[np.argsort(-scores, kind='stable')]
     for fraction in [.01, .02, .05, .10, .15, .20, .30, .50]:

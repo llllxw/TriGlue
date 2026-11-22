@@ -12,6 +12,7 @@ import dgl
 import json
 SETTINGS = json.loads(Path(__file__).with_name('config.json').read_text(encoding='utf-8'))
 from torch.utils.data import Dataset
+from schema import _canonical_smiles
 
 
 def _pad(arrays: Sequence[np.ndarray]) -> np.ndarray:
@@ -59,9 +60,13 @@ class PreparedFeatureDataset(Dataset):
         return graph
 
     def _protein(self, protein_id: str, sequence: str):
+        sequence = ''.join(sequence.split()).upper()
         alphabet='ACDEFGHIKLMNPQRSTVWYX'
         if not sequence or len(sequence)>1200 or set(sequence)-set(alphabet):
             raise ValueError('Require a protein sequence of 1-1200 residues from the 21-symbol alphabet')
+        sequence = sequence.replace('X', '')
+        if not sequence:
+            raise ValueError('No known residues for the protein TextCNN')
         one_hot=np.zeros((1200,21),dtype=np.float32)
         one_hot[np.arange(len(sequence)),[alphabet.index(a) for a in sequence]]=1
         return (
@@ -77,14 +82,14 @@ class PreparedFeatureDataset(Dataset):
         p2 = str(row["protein2_id"])
         p1_one_hot, p1_graph, p1_esm2 = self._protein(p1, str(row['protein1_sequence']))
         p2_one_hot, p2_graph, p2_esm2 = self._protein(p2, str(row['protein2_sequence']))
+        smiles, error = _canonical_smiles(str(row["smiles"]))
+        if error:
+            raise ValueError(f"{compound_id}: {error}")
         return {
-            "smiles": str(row["smiles"]),
+            "smiles": smiles,
             "compound_graph": self._load_graph(
                 str(self.root / "compound_graph" / f"{compound_id}.bin")
             ).clone(),
-            "compound_embedding": self._load_array(
-                str(self.root / "compound_3d_embedding" / f"{compound_id}.npy")
-            ),
             "p1_one_hot": p1_one_hot,
             "p1_graph": p1_graph,
             "p1_esm2": p1_esm2,
@@ -97,18 +102,12 @@ class PreparedFeatureDataset(Dataset):
     def collate(batch):
         def graph_batch(key: str):
             graphs = [sample[key] for sample in batch]
-            for graph_index, graph in enumerate(graphs):
-                graph.ndata["graph_id"] = torch.full(
-                    (graph.num_nodes(),), graph_index, dtype=torch.long
-                )
-            return dgl.batch(graphs)
+            # Both release schemas contain 'feats'; GIN only consumes that node array.
+            return dgl.batch(graphs, ndata=["feats"], edata=None)
 
         return (
             [sample["smiles"] for sample in batch],
             graph_batch("compound_graph"),
-            torch.tensor(
-                _pad([sample["compound_embedding"] for sample in batch]), dtype=torch.float32
-            ),
             torch.tensor(np.stack([sample["p1_one_hot"] for sample in batch]), dtype=torch.float32),
             graph_batch("p1_graph"),
             torch.tensor(_pad([sample["p1_esm2"] for sample in batch]), dtype=torch.float32),

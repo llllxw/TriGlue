@@ -83,7 +83,7 @@ class TriModalFusion(nn.Module):
         return tuple(x.unbind(dim=1))
 
 SETTINGS=json.loads(Path(__file__).with_name('config.json').read_text(encoding='utf-8'))
-MODEL_ID='TriGlue_manuscript_reference_v2'
+MODEL_ID='TriGlue_finaldata_coordinate_model'
 
 class TriComplexClassifier(nn.Module):
     MOLFORMER='ibm-research/MoLFormer-XL-both-10pct'

@@ -2,12 +2,12 @@
   "upstream_commit": "7f05ed8603c05d1a8091b4e7374673dceb352bee",
   "dataset_sha256": "b7ff6b7802f9874e0871e54e5e10ed218341accd1723328e2377cc8cd109b893",
   "manuscript_sha256": "3becf8afb88dc8d485bceac2818c596ccfb350faf62245ff03c2f6242ecb020d",
-  "status": "Manuscript-based reference implementation; full paper numerical reproduction not established",
+  "clarified_manuscript_sha256": "1a109938caacd6219a00a416e86d1a4a90fc19541ad705591bd57e0613cfc46c",
+  "status": "Final-data retraining implementation; full five-seed metrics require a new experiment",
   "model_math": "Single 21-channel TextCNN / DGL GIN / multimodal cross-attention reference model; new training required",
-  "missing": [
-    "raw-coordinate feature/augmentation resources",
-    "historical final-data fold identities and matched checkpoints for exact numerical replay"
-  ],
+  "coordinate_protocol": "Seeded RDKit conformers from final-data SMILES. Add independent Gaussian noise (0.02 angstrom) to real heavy-atom coordinates immediately before the frozen Uni-Mol2 forward pass during training. Use clean conformers at validation and test. Protein graphs and sequence-only ESM-2 embeddings use their fixed release inputs.",
+  "trainable_scope": "Train TextCNN, both GINs, projection layers, fusion and classifier. Freeze MoLFormer, Uni-Mol2 and ESM-2.",
+  "historical_comparison": "Archived test probabilities from a different data version reproduce Table S2 means. They are not predictions from this implementation.",
   "recovered_from_release": [
     "final sequence mapping",
     "parent groups and links",
@@ -25,7 +25,8 @@
     "splits/fold3.csv": "01a9d0aa688a92909d6a14c8cb3f0cee04ff9366b6d0f45ebca32589f4a258e4",
     "splits/fold4.csv": "fe338cee301d943b9f89adecc15fd0fc1259adb71f95d2873cd1a1efbfff6e99",
     "splits/fold5.csv": "c6f84c9fbb9edc386dff7665b51c7bcc887453e4334857f1575765ae30a104c5",
-    "splits/manifest.json": "c11bba27c829143c2191e3199eef6473db9489edda77d8686c4d0ba8709f75fb"
+    "splits/fixed.csv": "fbd9759e5ea08245837a1f1aec8382cc0ab141daecb111d7f6249956dbb9e850",
+    "splits/manifest.json": "80e5f3f0eac6e78d217606ce4faeb60063aac763bf00452660161e976756ae4d"
   },
   "reference_interpretation": {
     "intra_attention": "self-attention over the three modalities within each entity",

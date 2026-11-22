@@ -14,7 +14,7 @@ def settings_digest():
 
 def source_hashes():
     return {name:hashlib.sha256(Path(__file__).with_name(name).read_text(encoding='utf-8').encode()).hexdigest()
-            for name in ['model.py','Dataset.py']}
+            for name in ['model.py','Dataset.py','coordinate_features.py']}
 
 
 def _resolve_device(torch,requested):
@@ -42,12 +42,15 @@ def _load_config(path):
     return config
 
 
-def _move_batch(batch,device):
-    return (batch[0],)+tuple(value.to(device) for value in batch[1:])
+def _move_batch(batch, device, coordinate_encoder, sigma=0.0):
+    smiles, compound_graph, *proteins = batch
+    compound_embedding = coordinate_encoder.encode(smiles, sigma)
+    return (smiles, compound_graph.to(device), compound_embedding,
+            *(value.to(device) for value in proteins))
 
 
 def predict_prepared(input_csv,feature_root,checkpoints,run_configs,output_csv,*,
-                     batch_size=16,device='cpu',temperatures=None,molformer_model=None):
+                     batch_size=16,device='cpu',temperatures=None,molformer_model=None,unimol_dir=None):
     import torch
     from torch.utils.data import DataLoader
     from Dataset import PreparedFeatureDataset
@@ -69,6 +72,10 @@ def predict_prepared(input_csv,feature_root,checkpoints,run_configs,output_csv,*
     dataset=PreparedFeatureDataset(frame,Path(feature_root))
     loader=DataLoader(dataset,batch_size=batch_size,shuffle=False,collate_fn=dataset.collate,num_workers=0)
     target=_resolve_device(torch,device)
+    from coordinate_features import CoordinateEncoder
+    coordinate_encoder = CoordinateEncoder(unimol_dir, target)
+    if any(c['unimol_sha256'] != coordinate_encoder.checkpoint_sha256 for c in configs):
+        raise ValueError('The frozen Uni-Mol2 weights differ from training')
     scores=[];raw=[]
     TriComplexClassifier.MOLFORMER=str(Path(molformer_model).resolve())
     for checkpoint,temperature in zip(checkpoints,temperatures):
@@ -77,7 +84,8 @@ def predict_prepared(input_csv,feature_root,checkpoints,run_configs,output_csv,*
         model.to(target).eval();freeze_molformer_random_features(model)
         logits=[]
         with torch.inference_mode():
-            for batch in loader:logits.extend(model(*_move_batch(batch,target)).cpu().tolist())
+            for batch in loader:
+                logits.extend(model(*_move_batch(batch,target,coordinate_encoder)).cpu().tolist())
         values=torch.tensor(logits,dtype=torch.float64)
         if not torch.isfinite(values).all():raise ValueError('Model returned nonfinite logits')
         scores.append(torch.sigmoid(values/temperature).numpy());raw.append(torch.sigmoid(values).numpy())

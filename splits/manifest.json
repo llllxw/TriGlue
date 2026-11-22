@@ -2,6 +2,13 @@
   "origin": "Reconstructed from the exact final-data Release parent groups; not asserted to be historical experiment fold IDs",
   "sklearn": "1.2.2",
   "split_seed": 2025,
+  "fixed_split": {
+    "file": "fixed.csv",
+    "selection": "Section 2.1: first outer fold and first inner fold",
+    "train": 4491,
+    "val": 1506,
+    "test": 1487
+  },
   "outer": "StratifiedGroupKFold(n_splits=5, shuffle=True)",
   "inner": "4 folds; validation positive fraction closest to outer remaining set; lowest index breaks ties",
   "folds": [

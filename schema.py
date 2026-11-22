@@ -63,7 +63,6 @@ def _canonical_smiles(value: str) -> tuple[str | None, str | None]:
 def _feature_paths(root: Path, compound_id: str, protein_id: str) -> dict[str, Path]:
     return {
         "compound_graph": root / "compound_graph" / f"{compound_id}.bin",
-        "compound_embedding": root / "compound_3d_embedding" / f"{compound_id}.npy",
         "protein_graph": root / "protein_graph" / f"{protein_id}.bin",
         "protein_esm2": root / "protein_3d_embedding" / f"{protein_id}.npy",
     }
@@ -212,7 +211,6 @@ def audit_triplets(
                 if not np.isfinite(array).all():
                     issues.append(AuditIssue("error", line, key, f"nonfinite values in {path}"))
                 expected = {
-                    "compound_embedding": 768,
                     "protein_esm2": 1280,
                     "protein2_protein_esm2": 1280,
                 }.get(key)

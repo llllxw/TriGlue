@@ -5,3 +5,6 @@ features/
 models/
 *.pth
 *.pt
+*.ckpt
+*.safetensors
+*.bin
