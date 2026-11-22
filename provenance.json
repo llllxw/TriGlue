@@ -3,8 +3,11 @@
   "dataset_sha256": "b7ff6b7802f9874e0871e54e5e10ed218341accd1723328e2377cc8cd109b893",
   "manuscript_sha256": "3becf8afb88dc8d485bceac2818c596ccfb350faf62245ff03c2f6242ecb020d",
   "clarified_manuscript_sha256": "1a109938caacd6219a00a416e86d1a4a90fc19541ad705591bd57e0613cfc46c",
-  "status": "Final-data retraining implementation; full five-seed metrics require a new experiment",
-  "model_math": "Single 21-channel TextCNN / DGL GIN / multimodal cross-attention reference model; new training required",
+  "validation": {
+    "completed": "Two training epochs on a final-data subset, checkpoint reload, held-out prediction and evaluation on native Windows CPU",
+    "full_final_data_cv": "Five-fold, five-seed training on this dataset has not been completed."
+  },
+  "model_math": "21-channel protein TextCNN, molecular and protein DGL GINs, and multimodal cross-attention",
   "coordinate_protocol": "Seeded RDKit conformers from final-data SMILES. Add independent Gaussian noise (0.02 angstrom) to real heavy-atom coordinates immediately before the frozen Uni-Mol2 forward pass during training. Use clean conformers at validation and test. Protein graphs and sequence-only ESM-2 embeddings use their fixed release inputs.",
   "trainable_scope": "Train TextCNN, both GINs, projection layers, fusion and classifier. Freeze MoLFormer, Uni-Mol2 and ESM-2.",
   "historical_comparison": "Archived test probabilities from a different data version reproduce Table S2 means. They are not predictions from this implementation.",

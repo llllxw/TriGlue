@@ -1,43 +1,68 @@
-# TriGlue final-data retraining
+# TriGlue Enables Interpretable Prioritization of Molecular Glue-Induced Ternary Complex Formation
 
-Train one three-entity model on the final 7,484-row Supplementary Table 1. The fixed partitions group each parent triplet with its derived negatives. The five seeds and training hyperparameters are defined in `config.json`.
+Train TriGlue on the 7,484 compound–protein–protein triplets in Supplementary Table 1 and rank held-out triplets by calibrated score. For interactive prediction from a SMILES string and two proteins, download [TriGlue Predictor for Windows or Linux](https://github.com/llllxw/TriGlue/releases/tag/v0.1.0).
 
-## Setup
-
-Create the CPU environment with `conda env create -f environment.yml` and activate it with `conda activate triglue`. Install `python -m pip install --no-deps unimol-tools==0.1.3.post1` to preserve the pinned RDKit build. Run `python verify_inputs.py`.
-
-Extract the resource archives into one directory. Substitute these paths in the commands below. The archives are available from the [TriGlue release](https://github.com/llllxw/TriGlue/releases/tag/v0.1.0).
-
-| Argument placeholder | Extracted path | Archive |
-| --- | --- | --- |
-| `FEATURES` | `resources/features` | `TriGlueDesktop-data-v0.1.0.tar.gz` |
-| `UNIMOL` | `resources/encoders/unimol` | `TriGlueDesktop-encoders-v0.1.0.tar.gz` |
-| `MOLFORMER` | `resources/huggingface/hub/models--ibm-research--MoLFormer-XL-both-10pct/snapshots/7b12d946c181a37f6012b9dc3b002275de070314` | `TriGlueDesktop-models-v0.1.0.tar.gz` |
-
-The research workflow uses the MoLFormer snapshot from the last archive and trains the TriGlue classifier locally.
-
-## Train and evaluate
-
-Write the 25 commands and fixed training, validation and test tables:
+## Install
 
 ```bash
-python run_cv.py --feature-root FEATURES --molformer-model MOLFORMER --unimol-dir UNIMOL --output-dir results/plan --dry-run
+conda env create -f environment.yml
+conda activate triglue
+python -m pip install --no-deps unimol-tools==0.1.3.post1
+python verify_inputs.py
 ```
 
-The `inputs/fixed` directory holds the single split reconstructed using the rule in Section 2.1. It contains 4,491 training, 1,506 validation and 1,487 test samples. The five `inputs/fold*` directories follow the selection rule in Section 2.5 and average 4,488.0, 1,499.2 and 1,496.8 samples, respectively. The manuscript reports 4,489, 1,498 and 1,497 in both sections.
+Extract the three `TriGlueDesktop-{data,encoders,models}-v0.1.0.tar.gz` archives into the repository directory. They provide the prepared features, Uni-Mol2 encoder and MoLFormer snapshot used below. The desktop classifiers in the models archive are used by the desktop application. [Download resources](https://github.com/llllxw/TriGlue/releases/tag/v0.1.0)
 
-Run one cross-validation fold:
+## Data
+
+| File in `data/` | Contents |
+| --- | --- |
+| `dataset.csv` | Supplementary Table 1, including triplets, labels and sources |
+| `prepared_triplets.csv` | Training input with protein sequences, feature identifiers, labels and parent group for each triplet |
+| `sequences.csv` | Protein identifier, sequence and checksum |
+| `groups.csv` | Parent group for each sample |
+| `parent_links.csv` | Links from generated negatives to their contributing positive parents |
+
+The fixed split (Section 2.1) and five cross-validation folds (Section 2.5) are in `splits/`. Each parent group belongs to one partition per split. Use the following Bash commands to write the corresponding input tables.
 
 ```bash
-python train.py --train results/plan/inputs/fold1/train.csv --val results/plan/inputs/fold1/val.csv --feature-root FEATURES --molformer-model MOLFORMER --unimol-dir UNIMOL --output-dir results/model --device cpu
-python predict.py --input results/plan/inputs/fold1/test.csv --feature-root FEATURES --molformer-model MOLFORMER --unimol-dir UNIMOL --checkpoint results/model/best.pth --run-config results/model/run_config.json --output results/test.csv
-python evaluate.py --input results/test.csv --score-column inducibility_score_mean --output results/test_metrics.csv
+FEATURES=resources/features
+UNIMOL=resources/encoders/unimol
+MOLFORMER=resources/huggingface/hub/models--ibm-research--MoLFormer-XL-both-10pct/snapshots/7b12d946c181a37f6012b9dc3b002275de070314
+python run_cv.py --feature-root "$FEATURES" --unimol-dir "$UNIMOL" \
+  --molformer-model "$MOLFORMER" --output-dir results/plan --dry-run
 ```
 
-For a complete experiment run `run_cv.py` with a fresh output directory and omit `--dry-run`. The results include fold-level scores, pooled out-of-fold predictions for each seed, the mean and sample SD across those five metrics in `five_seed_summary.csv`, and a separate ensemble analysis. Raw probabilities are the primary ranking scores for comparison with historical Table S2. The validation-set temperature is used for calibrated scores. Each trained classifier checkpoint is written locally.
+## Train
 
-## Implementation
+Train one fold with the settings in `config.json`. For the single fixed split, use `results/plan/inputs/fixed` in place of `results/plan/inputs/fold1` throughout.
 
-MoLFormer-XL, ESM-2 and Uni-Mol2 are frozen. The protein TextCNN, both GINs, projections, fusion and prediction layers are trained. Training applies SMILES masking and graph-edge dropout. RDKit builds an ETKDGv3 conformer for each molecular SMILES, initialized with seed 42 and MMFF-optimized when parameterized. On each training occurrence, Gaussian noise with standard deviation 0.02 Å perturbs the heavy-atom coordinates immediately before frozen Uni-Mol2 encoding. Validation and prediction encode the same clean conformers. Protein structures contribute through the released residue graphs, and ESM-2 takes protein **sequences**. A failure to generate a 3D conformer stops the run and identifies the input.
+```bash
+FOLD=results/plan/inputs/fold1
+python train.py --train "$FOLD/train.csv" --val "$FOLD/val.csv" \
+  --feature-root "$FEATURES" --unimol-dir "$UNIMOL" --molformer-model "$MOLFORMER" \
+  --device cpu --output-dir results/model
+```
 
-The 21-channel protein TextCNN input excludes unknown residues. The fixed ESM-2 and protein-graph features retain the source sequence and structure indexing. The supplied partitions were reconstructed for the final dataset. The archived training runs that produced Table S2 used a different dataset and checkpoint-selection rule. Their metrics do not measure this retrained model.
+MoLFormer-XL, ESM-2 and Uni-Mol2 are frozen. Training updates the TextCNN, both GINs, projections, fusion layers and classifier. Adam uses a learning rate of 1e-4 and batch size 16. Training runs for up to 50 epochs and stops after 20 consecutive epochs without an improvement in validation accuracy. Training applies SMILES masking, graph-edge dropout and Gaussian noise to compound coordinates before Uni-Mol2 encoding.
+
+## Predict
+
+```bash
+python predict.py --input "$FOLD/test.csv" --feature-root "$FEATURES" \
+  --unimol-dir "$UNIMOL" --molformer-model "$MOLFORMER" --checkpoint results/model/best.pth \
+  --run-config results/model/run_config.json --output results/test.csv
+```
+
+`inducibility_score_mean` is the positive-class probability after temperature scaling on validation data. To score an ensemble, repeat the `--checkpoint` and `--run-config` arguments in matching order. The output includes the mean probability, sample standard deviation and empirical 2.5th and 97.5th percentiles across models.
+
+## Evaluate
+
+```bash
+python evaluate.py --input results/test.csv --score-column inducibility_score_mean \
+  --output results/test_metrics.csv
+```
+
+For all five folds and five seeds, run `run_cv.py` with the same resource paths, a new output directory and no `--dry-run`. It writes per-fold metrics, pooled out-of-fold predictions for each seed and `five_seed_summary.csv`.
+
+The reconstructed fixed split contains 4,491/1,506/1,487 training/validation/test samples. The five folds average 4,488.0/1,499.2/1,496.8. The manuscript reports 4,489/1,498/1,497 for both. Table S2 summarizes archived runs with an earlier dataset and a different checkpoint-selection rule. See the [split manifest](splits/manifest.json) and [experiment provenance](provenance.json).

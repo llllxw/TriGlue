@@ -35,7 +35,8 @@ def freeze_molformer_random_features(model):
 def _load_config(path):
     from model import MODEL_ID
     config=json.loads(Path(path).read_text(encoding='utf-8'))
-    if config.get('model_id')!=MODEL_ID:raise ValueError('Checkpoint requires training with this manuscript reference model')
+    if config.get('model_id') != MODEL_ID:
+        raise ValueError(f'Checkpoint architecture mismatch: expected {MODEL_ID}, got {config.get("model_id")!r}')
     if config.get('settings_sha256')!=settings_digest():raise ValueError('Training settings differ from config.json')
     if config.get('model_source_sha256')!=source_hashes():raise ValueError('Model implementation differs from training')
     if config.get('temperature_fit_partition')!='validation':raise ValueError('Validation-fitted temperature is missing')
